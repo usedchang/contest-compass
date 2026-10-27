@@ -1,0 +1,14 @@
+{
+  "name": "Contest Compass · 随机练题",
+  "short_name": "Contest Compass",
+  "description": "随时抽题、管理练习记录并导出题面",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5f1",
+  "theme_color": "#f7f5f1",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

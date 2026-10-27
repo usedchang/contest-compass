@@ -1,0 +1,75 @@
+{
+  "name": "contest-compass",
+  "version": "1.0.0",
+  "description": "随机抽取算法竞赛题并导出题面的离线桌面工具",
+  "author": "Contest Compass Contributors",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/inject-precache.mjs",
+    "preview": "vite preview",
+    "check": "npm run build && node --test tests/*.test.js",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:desktop": "npm run build && node scripts/smoke-desktop.mjs",
+    "desktop": "npm run build && electron .",
+    "desktop:pack": "npm run desktop:pack:win",
+    "desktop:pack:win": "npm run build && electron-builder --win",
+    "desktop:pack:mac": "npm run build && electron-builder --mac",
+    "desktop:pack:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.0.0",
+    "playwright-core": "^1.64.1",
+    "vite": "^6.3.0"
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "dev.contestcompass.app",
+    "productName": "Contest Compass",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Contest-Compass-Windows-${version}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "artifactName": "Contest-Compass-macOS-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "artifactName": "Contest-Compass-Linux-${version}-${arch}.${ext}"
+    }
+  }
+}
