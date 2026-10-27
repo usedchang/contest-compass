@@ -40,7 +40,7 @@ Vite 使用相对资源路径，项目站点与用户主页站点均可部署。
 GitHub Pages 不能读取洛谷的跨域页面，因此使用一个只请求洛谷题面、只允许本站调用的 Cloudflare Worker。桌面版不依赖这个 Worker。
 
 1. 在 Cloudflare 创建有 **Workers Scripts: Edit** 权限的 API Token，并找到 Account ID。
-2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions → Repository secrets** 添加 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。不要把令牌提交到仓库。
+2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 添加 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUNT_ID`。不要把令牌提交到仓库。
 3. 在 Actions 手动运行 **Deploy statement worker**。工作流会输出 `https://contest-compass-statement.<你的子域>.workers.dev` 一类的地址。访问其 `/health` 应返回 `{"ok":true}`。
 4. 在同一页面的 **Variables** 添加 `VITE_STATEMENT_API`，值为上一步的 Worker 根地址。重新运行 **Deploy GitHub Pages**，站点便会自动读取中文题面。
 
