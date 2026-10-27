@@ -50,7 +50,7 @@ GitHub Pages 不能读取洛谷的跨域页面，因此使用一个只请求洛�
 
 网页支持安装为 PWA。将站点发布到 HTTPS 后，在支持的浏览器中可点击「客户端与设置 → 安装网页客户端」或通过浏览器菜单安装。备用题库和已缓存资源可离线使用。
 
-桌面版基于 Electron。推送版本标签，例如 `v1.0.0`，`.github/workflows/client.yml` 会并行构建以下文件并上传到 GitHub Releases：
+桌面版基于 Electron。推送版本标签，例如 `v1.1.0`，`.github/workflows/client.yml` 会并行构建以下文件并上传到 GitHub Releases：
 
 | 系统 | 下载格式 |
 | --- | --- |
