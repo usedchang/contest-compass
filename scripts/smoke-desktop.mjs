@@ -19,6 +19,8 @@ try {
   await window.waitForFunction(() => document.querySelector('.problem-title'));
   const raw = await window.evaluate(() => window.contestNative.fetchStatement('CF4A'));
   assert.match(raw, /lentille-context/);
+  const catalog = await window.evaluate(() => window.contestNative.fetchAtcoderCatalog());
+  assert.ok(catalog.problems.length > 9000);
   await window.evaluate(() => {
     localStorage.setItem('compass-history', JSON.stringify([{ id: '4A', source: 'codeforces', title: 'Watermelon', rating: 800, tags: ['math'], url: 'https://codeforces.com/problemset/problem/4/A' }]));
     localStorage.setItem('compass-favorites', JSON.stringify(['4A']));

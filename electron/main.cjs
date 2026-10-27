@@ -7,6 +7,16 @@ const os = require('node:os');
 protocol.registerSchemesAsPrivileged([{ scheme: 'compass', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 app.whenReady().then(() => {
+  ipcMain.handle('atcoder:catalog', async () => {
+    const [problemsResponse, modelsResponse] = await Promise.all([
+      fetch('https://kenkoooo.com/atcoder/resources/problems.json', { signal: AbortSignal.timeout(18000) }),
+      fetch('https://kenkoooo.com/atcoder/resources/problem-models.json', { signal: AbortSignal.timeout(18000) })
+    ]);
+    if (!problemsResponse.ok || !modelsResponse.ok) throw new Error('AtCoder 题库请求失败');
+    const [problems, models] = await Promise.all([problemsResponse.json(), modelsResponse.json()]);
+    if (!Array.isArray(problems) || problems.length < 1000 || !models || typeof models !== 'object') throw new Error('AtCoder 题库数据不完整');
+    return { problems, models };
+  });
   ipcMain.handle('statement:save-png', async (_event, filename, dataUrl) => {
     if (typeof filename !== 'string' || filename !== path.basename(filename) || !filename.endsWith('.png')) throw new Error('无效的文件名');
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,') || dataUrl.length > 30_000_000) throw new Error('无效的 PNG 图片');

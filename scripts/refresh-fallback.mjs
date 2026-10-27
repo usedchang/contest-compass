@@ -25,14 +25,13 @@ const [atProblemsResponse, atModelsResponse] = await Promise.all([
 ]);
 if (!atProblemsResponse.ok || !atModelsResponse.ok) throw new Error('AtCoder API error');
 const [atProblems, atModels] = await Promise.all([atProblemsResponse.json(), atModelsResponse.json()]);
-const atGroups = new Map();
+const atItems = [];
+const atSeen = new Set();
 for (const p of atProblems) {
   const item = normalizeAtcoderProblem(p, atModels[p.id]);
-  if (!item) continue;
-  const band = item.rating == null ? 'unrated' : String(Math.floor(item.rating / 100) * 100);
-  if (!atGroups.has(band)) atGroups.set(band, []);
-  atGroups.get(band).push(item);
+  if (!item || atSeen.has(item.id)) continue;
+  atSeen.add(item.id);
+  atItems.push(item);
 }
-const atPicked = [...atGroups.values()].flatMap(group => group.sort((a, b) => score(a.id) - score(b.id)).slice(0, 45));
-await writeFile('public/data/atcoder-fallback.json', JSON.stringify(atPicked));
-console.log(`Wrote ${atPicked.length} AtCoder metadata records`);
+await writeFile('public/data/atcoder-fallback.json', JSON.stringify(atItems));
+console.log(`Wrote ${atItems.length} AtCoder metadata records`);

@@ -32,12 +32,23 @@ export async function loadAtcoder(onUpdate) {
     return;
   }
   try {
-    const [problemsResponse, modelsResponse] = await Promise.all([
-      fetch(`${API_ROOT}problems.json`, { signal: AbortSignal.timeout(18000) }),
-      fetch(`${API_ROOT}problem-models.json`, { signal: AbortSignal.timeout(18000) })
-    ]);
-    if (!problemsResponse.ok || !modelsResponse.ok) throw new Error('AtCoder 题库请求失败');
-    const [problems, models] = await Promise.all([problemsResponse.json(), modelsResponse.json()]);
+    let problems;
+    let models;
+    if (window.contestNative?.fetchAtcoderCatalog) {
+      ({ problems, models } = await window.contestNative.fetchAtcoderCatalog());
+    } else if (import.meta.env.VITE_STATEMENT_API?.trim()) {
+      const root = import.meta.env.VITE_STATEMENT_API.trim().replace(/\/$/, '');
+      const response = await fetch(`${root}/atcoder/catalog`, { signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new Error(`题库服务返回 HTTP ${response.status}`);
+      ({ problems, models } = await response.json());
+    } else {
+      const [problemsResponse, modelsResponse] = await Promise.all([
+        fetch(`${API_ROOT}problems.json`, { signal: AbortSignal.timeout(18000) }),
+        fetch(`${API_ROOT}problem-models.json`, { signal: AbortSignal.timeout(18000) })
+      ]);
+      if (!problemsResponse.ok || !modelsResponse.ok) throw new Error('AtCoder 题库请求失败');
+      [problems, models] = await Promise.all([problemsResponse.json(), modelsResponse.json()]);
+    }
     if (!Array.isArray(problems) || problems.length < 1000 || !models || typeof models !== 'object') throw new Error('AtCoder 题库数据不完整');
     const seen = new Set();
     const items = problems.map(p => normalizeAtcoderProblem(p, models[p.id])).filter(p => {

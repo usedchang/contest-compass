@@ -25,7 +25,7 @@ npm run check
 - **导出格式**：当前显示的题面可导出 PNG 图片、Markdown、离线 HTML，或通过打印窗口保存 PDF。公式使用 KaTeX 排版，原题链接会一并保留。
 - 收藏题单可以导出 CSV 或 JSON。题单、历史、已完成状态和补充题面保存在浏览器或桌面客户端的本地存储中。
 
-在线题库失败时，自动使用随项目提供的两个备用元数据题库。要更新备用数据，可运行 `node scripts/refresh-fallback.mjs`。两站难度来自各自的评级体系，混合筛选时仅作粗略参考。
+在线题库失败时，自动使用随项目提供的备用元数据题库；AtCoder 备用数据包含完整目录。要更新备用数据，可运行 `node scripts/refresh-fallback.mjs`。AtCoder 约半数题目没有难度模型，默认将未评级题目纳入抽取。两站难度来自各自的评级体系，混合筛选时仅作粗略参考。
 
 ## 部署 GitHub Pages
 
@@ -37,7 +37,7 @@ Vite 使用相对资源路径，项目站点与用户主页站点均可部署。
 
 ### 网页版自动获取题面
 
-GitHub Pages 不能读取洛谷的跨域页面，因此使用一个只请求洛谷题面、只允许本站调用的 Cloudflare Worker。桌面版不依赖这个 Worker。
+GitHub Pages 不能读取洛谷的跨域页面，kenkoooo 的部分响应在浏览器中也缺少 CORS 头，因此使用 Cloudflare Worker 转发题面和 AtCoder 题库，并限制为本站调用。桌面版通过本机进程获取数据，不依赖这个 Worker。
 
 1. 在 Cloudflare 创建有 **Workers Scripts: Edit** 权限的 API Token，并找到 Account ID。
 2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 添加 Secret `CLOUDFLARE_API_TOKEN` 和变量 `CLOUDFLARE_ACCOUNT_ID`。不要把令牌提交到仓库。
@@ -50,7 +50,7 @@ GitHub Pages 不能读取洛谷的跨域页面，因此使用一个只请求洛�
 
 网页支持安装为 PWA。将站点发布到 HTTPS 后，在支持的浏览器中可点击「客户端与设置 → 安装网页客户端」或通过浏览器菜单安装。备用题库和已缓存资源可离线使用。
 
-桌面版基于 Electron。推送版本标签，例如 `v1.1.0`，`.github/workflows/client.yml` 会并行构建以下文件并上传到 GitHub Releases：
+桌面版基于 Electron。推送版本标签，例如 `v1.1.1`，`.github/workflows/client.yml` 会并行构建以下文件并上传到 GitHub Releases：
 
 | 系统 | 下载格式 |
 | --- | --- |

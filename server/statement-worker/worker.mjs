@@ -26,6 +26,25 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     if (request.method !== 'GET') return jsonError('仅支持 GET 请求', 405, headers);
     if (url.pathname === '/health') return new Response(JSON.stringify({ ok: true }), { headers: { ...headers, 'Content-Type': 'application/json' } });
+    if (url.pathname === '/atcoder/catalog') {
+      const cache = typeof caches !== 'undefined' ? caches.default : null;
+      const cacheKey = new Request(`${url.origin}/atcoder/catalog`);
+      let catalog = cache ? await cache.match(cacheKey).then(response => response?.text()) : null;
+      if (!catalog) {
+        try {
+          const [problemsResponse, modelsResponse] = await Promise.all([
+            fetch('https://kenkoooo.com/atcoder/resources/problems.json', { signal: AbortSignal.timeout(18000) }),
+            fetch('https://kenkoooo.com/atcoder/resources/problem-models.json', { signal: AbortSignal.timeout(18000) })
+          ]);
+          if (!problemsResponse.ok || !modelsResponse.ok) return jsonError('AtCoder 题库暂时不可用', 502, headers);
+          const [problems, models] = await Promise.all([problemsResponse.json(), modelsResponse.json()]);
+          if (!Array.isArray(problems) || problems.length < 1000 || !models || typeof models !== 'object') return jsonError('AtCoder 题库数据不完整', 502, headers);
+          catalog = JSON.stringify({ problems, models });
+          if (cache && typeof ctx.waitUntil === 'function') ctx.waitUntil(cache.put(cacheKey, new Response(catalog, { headers: { 'Cache-Control': 'public, max-age=21600' } })));
+        } catch { return jsonError('AtCoder 题库请求失败', 502, headers); }
+      }
+      return new Response(catalog, { headers: { ...headers, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=21600' } });
+    }
     if (url.pathname !== '/statement') return jsonError('接口不存在', 404, headers);
 
     const id = url.searchParams.get('id') || '';

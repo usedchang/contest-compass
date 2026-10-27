@@ -11,6 +11,7 @@ const page = await context.newPage();
 try {
   await page.goto(siteUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('.problem-title').waitFor({ timeout: 30000 });
+  assert.match(await page.locator('.problem-title a').getAttribute('href'), /^https:\/\//);
   assert.match(await page.locator('.problem-intro').textContent(), /来自 (Codeforces|AtCoder)/);
   const before = await page.locator('.problem-title').textContent();
   await page.getByRole('button', { name: /换一题/ }).click();
@@ -18,7 +19,9 @@ try {
   assert.notEqual(before, after);
   await page.getByRole('button', { name: '加入题单' }).click();
   await page.getByRole('button', { name: '题面导出', exact: true }).click();
+  assert.match(await page.locator('.statement-header h2 a').getAttribute('href'), /^https:\/\//);
   await page.getByRole('textbox', { name: '题面正文' }).fill('输入一个整数 n。\n输出 n 的平方。');
+  assert.ok((await page.locator('.statement-header>.pill').boundingBox()).height < 40);
   const [markdown] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: /Markdown/ }).click()
@@ -51,6 +54,9 @@ try {
 
   await page.getByRole('button', { name: 'AtCoder' }).click();
   await page.waitForFunction(() => Number(document.querySelector('.pool-summary strong')?.textContent.replaceAll(',', '')) > 0, { timeout: 30000 });
+  const atcoderLabel = await page.locator('.filter-group .helper-text').first().innerText();
+  assert.ok(Number(atcoderLabel.match(/^([\d,]+)/)?.[1].replaceAll(',', '')) > 9000, atcoderLabel);
+  if (process.env.COMPASS_EXPECT_ATCODER_LIVE === '1') assert.match(atcoderLabel, /在线数据|本机缓存/);
   await page.waitForFunction(() => document.querySelector('.problem-topline .source')?.textContent === 'ATCODER');
   await page.getByRole('button', { name: '查看题面' }).click();
   const editor = page.getByRole('textbox', { name: '题面正文' });

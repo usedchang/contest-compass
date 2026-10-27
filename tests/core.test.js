@@ -81,7 +81,7 @@ test('statement worker rejects invalid IDs and unauthorized origins', async () =
 test('offline metadata pools are populated', () => {
   for (const [file, source] of [['cf-fallback.json', 'codeforces'], ['atcoder-fallback.json', 'atcoder']]) {
     const items = JSON.parse(readFileSync(new URL(`../public/data/${file}`, import.meta.url), 'utf8'));
-    assert.ok(items.length > 1000);
+    assert.ok(items.length > (source === 'atcoder' ? 9000 : 1000));
     assert.ok(items.every(item => item.source === source && item.url.startsWith('https://')));
   }
 });
