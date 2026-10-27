@@ -27,9 +27,21 @@ export function normalizeAtcoderProblem(problem, model) {
 
 export async function loadAtcoder(onUpdate) {
   const cached = read(CACHE_KEY, null);
-  if (cached?.items?.length && Date.now() - cached.time < DAY) {
+  let hasPool = false;
+  if (cached?.items?.length >= 9000) {
     onUpdate(cached.items, 'cache');
-    return;
+    hasPool = true;
+    if (Date.now() - cached.time < DAY) return;
+  }
+  if (!hasPool) {
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}data/atcoder-fallback.json`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const bundled = await response.json();
+      if (!Array.isArray(bundled) || bundled.length < 9000) throw new Error('内置题库不完整');
+      onUpdate(bundled, 'bundled');
+      hasPool = true;
+    } catch { /* 在线请求仍可提供题库 */ }
   }
   try {
     let problems;
@@ -59,9 +71,6 @@ export async function loadAtcoder(onUpdate) {
     write(CACHE_KEY, { time: Date.now(), items });
     onUpdate(items, 'live');
   } catch (error) {
-    if (cached?.items?.length) { onUpdate(cached.items, 'cache'); return; }
-    const response = await fetch(`${import.meta.env.BASE_URL}data/atcoder-fallback.json`);
-    if (!response.ok) throw error;
-    onUpdate(await response.json(), 'offline');
+    if (!hasPool) throw error;
   }
 }
