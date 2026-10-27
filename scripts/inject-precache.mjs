@@ -1,7 +1,8 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 
-const html = await readFile('dist/index.html', 'utf8');
-const assets = [...new Set([...html.matchAll(/(?:src|href)="(\.\/assets\/[^"?]+)"/g)].map(match => match[1]))];
+const assets = (await readdir('dist/assets', { withFileTypes: true }))
+  .filter(entry => entry.isFile())
+  .map(entry => `./assets/${entry.name}`);
 if (!assets.length) throw new Error('No built assets found for offline cache');
 const sw = await readFile('dist/sw.js', 'utf8');
 const marker = 'const PRECACHE = [];';

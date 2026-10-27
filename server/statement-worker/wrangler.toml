@@ -1,0 +1,6 @@
+name = "contest-compass-statement"
+main = "worker.mjs"
+compatibility_date = "2026-10-27"
+
+[vars]
+ALLOWED_ORIGINS = "https://usedchang.github.io,http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"

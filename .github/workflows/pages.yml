@@ -32,6 +32,7 @@ jobs:
       - run: npm run check
         env:
           VITE_REPOSITORY_URL: https://github.com/${{ github.repository }}
+          VITE_STATEMENT_API: ${{ vars.VITE_STATEMENT_API }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

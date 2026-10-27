@@ -3,12 +3,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const browserPath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const siteUrl = process.env.COMPASS_SITE_URL || 'http://127.0.0.1:4173/';
 if (!existsSync(browserPath)) throw new Error('Set CHROME_PATH to an installed Chrome executable');
 const browser = await chromium.launch({ executablePath: browserPath, headless: true });
 const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 try {
-  await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
+  await page.goto(siteUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('.problem-title').waitFor({ timeout: 30000 });
   assert.match(await page.locator('.problem-intro').textContent(), /来自 (Codeforces|AtCoder)/);
   const before = await page.locator('.problem-title').textContent();
@@ -27,6 +28,20 @@ try {
   assert.match(contents, /输出 n 的平方/);
   await page.getByRole('button', { name: '我的题单' }).click();
   assert.equal(await page.locator('.library-item').count(), 1);
+
+  if (process.env.COMPASS_EXPECT_AUTO === '1') {
+    await page.evaluate(() => {
+      localStorage.setItem('compass-history', JSON.stringify([{ id: '4A', source: 'codeforces', title: 'Watermelon', rating: 800, tags: ['math'], url: 'https://codeforces.com/problemset/problem/4/A' }]));
+      localStorage.setItem('compass-favorites', JSON.stringify(['4A']));
+    });
+    await page.reload();
+    await page.getByRole('button', { name: '我的题单' }).click();
+    await page.locator('.library-item').filter({ hasText: 'Watermelon' }).locator('.open-item').click();
+    await page.locator('.auto-status.success').waitFor({ timeout: 20000 });
+    assert.match(await page.locator('.statement-body').innerText(), /西瓜/);
+    const [png] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /PNG 图片/ }).click()]);
+    assert.equal(readFileSync(await png.path()).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  }
 
   await page.getByRole('button', { name: '随机练题' }).click();
   await page.setViewportSize({ width: 390, height: 844 });

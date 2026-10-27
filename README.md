@@ -21,7 +21,8 @@ npm run check
 
 - **Codeforces**：使用公开 `problemset.problems` API 获取题目、分数与算法标签。
 - **AtCoder**：使用 [AtCoder Problems](https://kenkoooo.com/atcoder/) 的 `problems.json` 与 `problem-models.json` 获取题目和难度。该 API 没有算法标签，页面用 ABC / ARC / AGC 等比赛系列作为标签。
-- **题面正文**：这两个题库 API 均不提供正文。打开原题复制文字，粘贴到「题面导出」页面后自动保存在本机，再导出 Markdown、HTML 或通过打印窗口保存 PDF。
+- **自动题面**：这两个题库 API 均不提供正文。桌面版直接读取洛谷镜像中的中文译文与原文；网页版通过下述题面 Worker 获取。题目未被镜像收录时仍可从原题复制并保存正文。
+- **导出格式**：当前显示的题面可导出 PNG 图片、Markdown、离线 HTML，或通过打印窗口保存 PDF。公式使用 KaTeX 排版，原题链接会一并保留。
 - 收藏题单可以导出 CSV 或 JSON。题单、历史、已完成状态和补充题面保存在浏览器或桌面客户端的本地存储中。
 
 在线题库失败时，自动使用随项目提供的两个备用元数据题库。要更新备用数据，可运行 `node scripts/refresh-fallback.mjs`。两站难度来自各自的评级体系，混合筛选时仅作粗略参考。
@@ -33,6 +34,17 @@ npm run check
 3. `.github/workflows/pages.yml` 会在每次推送到 `main` 时检查并部署 `dist/`。
 
 Vite 使用相对资源路径，项目站点与用户主页站点均可部署。
+
+### 网页版自动获取题面
+
+GitHub Pages 不能读取洛谷的跨域页面，因此使用一个只请求洛谷题面、只允许本站调用的 Cloudflare Worker。桌面版不依赖这个 Worker。
+
+1. 在 Cloudflare 创建有 **Workers Scripts: Edit** 权限的 API Token，并找到 Account ID。
+2. 在 GitHub 仓库 **Settings → Secrets and variables → Actions → Repository secrets** 添加 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。不要把令牌提交到仓库。
+3. 在 Actions 手动运行 **Deploy statement worker**。工作流会输出 `https://contest-compass-statement.<你的子域>.workers.dev` 一类的地址。访问其 `/health` 应返回 `{"ok":true}`。
+4. 在同一页面的 **Variables** 添加 `VITE_STATEMENT_API`，值为上一步的 Worker 根地址。重新运行 **Deploy GitHub Pages**，站点便会自动读取中文题面。
+
+本地开发可分别运行 `npm run statement:dev` 和 `$env:VITE_STATEMENT_API='http://127.0.0.1:8788'; npm run dev`。Worker 会校验题号和访问来源，缓存镜像响应；题面若未收录，页面会提示并保留手动粘贴入口。
 
 ## 下载客户端
 

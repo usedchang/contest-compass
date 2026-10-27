@@ -12,16 +12,23 @@
     "check": "npm run build && node --test tests/*.test.js",
     "smoke": "node scripts/smoke.mjs",
     "smoke:desktop": "npm run build && node scripts/smoke-desktop.mjs",
+    "statement:dev": "node scripts/statement-proxy-dev.mjs",
     "desktop": "npm run build && electron .",
     "desktop:pack": "npm run desktop:pack:win",
-    "desktop:pack:win": "npm run build && electron-builder --win",
-    "desktop:pack:mac": "npm run build && electron-builder --mac",
-    "desktop:pack:linux": "npm run build && electron-builder --linux"
+    "desktop:pack:win": "npm run build && electron-builder --win --publish never",
+    "desktop:pack:mac": "npm run build && electron-builder --mac --publish never",
+    "desktop:pack:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
+    "html-to-image": "^1.11.13",
+    "katex": "^0.19.1",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
@@ -58,16 +65,39 @@
     "mac": {
       "icon": "build/icon.png",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "artifactName": "Contest-Compass-macOS-${version}-${arch}.${ext}"
     },
     "linux": {
       "icon": "build/icon.png",
+      "maintainer": "Contest Compass Contributors <usedchang@users.noreply.github.com>",
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "Contest-Compass-Linux-${version}-${arch}.${ext}"
     }

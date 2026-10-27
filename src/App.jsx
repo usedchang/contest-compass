@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { toPng } from 'html-to-image';
 import { ArrowDownToLine, ArrowRight, BookOpen, Bookmark, Check, CheckCircle2, ChevronDown, CircleHelp, Code2, Compass, Download, ExternalLink, FileCode2, FileDown, FileText, Filter, History, Info, Laptop, Link2, Menu, RotateCcw, Search, Settings2, Shuffle, Sparkles } from 'lucide-react';
 import { loadAtcoder } from './lib/atcoder';
-import { exportCsv, downloadText, safeFilename, statementHtml, statementMarkdown } from './lib/export';
+import { exportCsv, downloadText, renderedStatementHtml, safeFilename, statementHtml, statementMarkdown } from './lib/export';
+import { fetchAutoStatement } from './lib/statement-client';
 import { fetchSolved, filteredProblems, loadProblems, randomUnseen } from './lib/problems';
 import { read, write } from './lib/storage';
 
@@ -20,10 +26,19 @@ function Logo() {
 
 function Pill({ children, tone = '' }) { return <span className={`pill ${tone}`}>{children}</span>; }
 
-function ProblemArticle({ problem, customText }) {
+function MarkdownBody({ children }) {
+  return <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{children}</ReactMarkdown>;
+}
+
+function ProblemArticle({ problem, customText, autoStatement, locale }) {
   if (!problem) return null;
+  const variant = autoStatement?.[locale] || autoStatement?.chinese || autoStatement?.original;
   return <div className="statement-body">
-    {customText?.trim() ? <section><h3>题面正文</h3><p className="user-statement">{customText}</p></section> : <div className="statement-empty"><FileText size={25} /><strong>还没有这道题的题面正文</strong><span>题库 API 不提供题面正文。可从原题复制文字，在右侧保存后导出。</span></div>}
+    {customText?.trim() ? <section><h3>我的题面</h3><div className="statement-markdown"><MarkdownBody>{customText}</MarkdownBody></div></section>
+      : variant ? <>
+        {variant.sections.map(section => <section key={section.heading}><h3>{section.heading}</h3><div className="statement-markdown"><MarkdownBody>{section.markdown}</MarkdownBody></div></section>)}
+        {autoStatement.samples.map((sample, index) => <div className="sample-grid" key={index}><section><h3>样例 {index + 1} · 输入</h3><pre>{sample.input}</pre></section><section><h3>样例 {index + 1} · 输出</h3><pre>{sample.output}</pre></section></div>)}
+      </> : <div className="statement-empty"><FileText size={25} /><strong>还没有这道题的题面正文</strong><span>正在尝试获取中文镜像题面。也可以从原题复制文字，在右侧保存后导出。</span></div>}
   </div>;
 }
 
@@ -66,6 +81,10 @@ function App() {
   const [cfInput, setCfInput] = useState(cfBinding.handle);
   const [cfLoading, setCfLoading] = useState(false);
   const [customStatements, setCustomStatements] = useState(read('compass-statements', {}));
+  const [autoStatements, setAutoStatements] = useState(read('compass-auto-statements-v1', {}));
+  const [statementLocale, setStatementLocale] = useState('chinese');
+  const [statementStatus, setStatementStatus] = useState({ id: '', state: 'idle', error: '' });
+  const statementRef = useRef(null);
   const [libraryTab, setLibraryTab] = useState('favorites');
   const [libraryQuery, setLibraryQuery] = useState('');
   const [toast, setToast] = useState('');
@@ -80,6 +99,7 @@ function App() {
   useEffect(() => { write('compass-solved', manualSolved); }, [manualSolved]);
   useEffect(() => { write('compass-cf-binding', cfBinding); }, [cfBinding]);
   useEffect(() => { write('compass-statements', customStatements); }, [customStatements]);
+  useEffect(() => { write('compass-auto-statements-v1', autoStatements); }, [autoStatements]);
   useEffect(() => { const handler = e => { e.preventDefault(); setInstallEvent(e); }; window.addEventListener('beforeinstallprompt', handler); return () => window.removeEventListener('beforeinstallprompt', handler); }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(''), 3200); return () => clearTimeout(timer); }, [toast]);
 
@@ -92,7 +112,8 @@ function App() {
   const isFavorite = !!current && favorites.includes(current.id);
   const isSolved = !!current && solvedIds.has(current.id);
   const currentStatement = current ? customStatements[current.id] || '' : '';
-  const canExport = !!current && !!currentStatement.trim();
+  const currentAuto = current ? autoStatements[current.id] : null;
+  const canExport = !!current && (!!currentStatement.trim() || !!currentAuto);
   const repo = import.meta.env.VITE_REPOSITORY_URL || '';
   const releasesUrl = repo ? `${repo.replace(/\/$/, '')}/releases/latest` : '';
 
@@ -103,6 +124,25 @@ function App() {
     setCycleIds(new Set([next.id]));
     setHistory(previous => [next, ...previous.filter(item => item.id !== next.id)].slice(0, 100));
   }, [current, pool]);
+
+  useEffect(() => { setStatementLocale('chinese'); }, [current?.id]);
+  useEffect(() => {
+    if (view !== 'studio' || !current || autoStatements[current.id]) return;
+    let cancelled = false;
+    setStatementStatus({ id: current.id, state: 'loading', error: '' });
+    fetchAutoStatement(current).then(statement => {
+      if (cancelled) return;
+      setAutoStatements(previous => {
+        const next = { ...previous, [current.id]: statement };
+        const keys = Object.keys(next).sort((a, b) => (next[b].fetchedAt || 0) - (next[a].fetchedAt || 0));
+        return Object.fromEntries(keys.slice(0, 20).map(key => [key, next[key]]));
+      });
+      setStatementStatus({ id: current.id, state: 'ready', error: '' });
+    }).catch(error => {
+      if (!cancelled) setStatementStatus({ id: current.id, state: 'error', error: error.message });
+    });
+    return () => { cancelled = true; };
+  }, [view, current?.id, autoStatements]);
 
   function switchSource(next) { setSourceState(next); setCurrent(null); setCycleIds(new Set()); }
   function draw() {
@@ -129,19 +169,51 @@ function App() {
   }
   function selectProblem(problem, target = 'studio') { setCurrent(problem); setView(target); setMobileMenu(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   function notifyCopy(value) { navigator.clipboard.writeText(value).then(() => setToast('链接已复制')).catch(() => setToast('复制失败，请手动复制链接')); }
-  function exportStatement(format) {
+  async function exportStatement(format) {
     if (!canExport) { setToast('请先保存题面正文，再进行导出。'); return; }
     const name = safeFilename(current);
-    if (format === 'md') downloadText(`${name}.md`, statementMarkdown(current, currentStatement), 'text/markdown;charset=utf-8');
-    if (format === 'html') downloadText(`${name}.html`, statementHtml(current, currentStatement), 'text/html;charset=utf-8');
+    const content = currentStatement.trim() || currentAuto;
+    if (format === 'md') downloadText(`${name}.md`, statementMarkdown(current, content, statementLocale), 'text/markdown;charset=utf-8');
+    if (format === 'html') downloadText(`${name}.html`, statementRef.current ? renderedStatementHtml(statementRef.current) : statementHtml(current, content, statementLocale), 'text/html;charset=utf-8');
     if (format === 'pdf') {
       const frame = document.createElement('iframe');
       frame.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
       frame.onload = () => { frame.contentWindow.focus(); frame.contentWindow.print(); setTimeout(() => frame.remove(), 60000); };
       document.body.append(frame);
-      frame.srcdoc = statementHtml(current, currentStatement);
+      frame.srcdoc = statementRef.current ? renderedStatementHtml(statementRef.current) : statementHtml(current, content, statementLocale);
+    }
+    if (format === 'png') {
+      try {
+        const node = statementRef.current;
+        if (!node) throw new Error('题面尚未渲染');
+        const pixelRatio = Math.min(2, Math.max(1, 12000 / node.scrollHeight));
+        const dataUrl = await toPng(node, {
+          pixelRatio, backgroundColor: '#ffffff', skipFonts: true, cacheBust: true,
+          filter: element => !element.classList?.contains('statement-language') && !element.classList?.contains('section-kicker') && !element.classList?.contains('pill')
+        });
+        if (window.contestNative?.savePng) {
+          const result = await window.contestNative.savePng(`${name}.png`, dataUrl);
+          if (!result.saved) return;
+        } else {
+          const link = document.createElement('a');
+          link.download = `${name}.png`;
+          link.href = dataUrl;
+          document.body.append(link);
+          link.click();
+          link.remove();
+        }
+      } catch (error) { setToast(`图片导出失败：${error.message}`); return; }
     }
     setToast(format === 'pdf' ? '已打开打印窗口，可选择“另存为 PDF”' : '题面已导出');
+  }
+  async function retryAutoStatement() {
+    if (!current) return;
+    setStatementStatus({ id: current.id, state: 'loading', error: '' });
+    try {
+      const statement = await fetchAutoStatement(current);
+      setAutoStatements(previous => ({ ...previous, [current.id]: statement }));
+      setStatementStatus({ id: current.id, state: 'ready', error: '' });
+    } catch (error) { setStatementStatus({ id: current.id, state: 'error', error: error.message }); }
   }
   async function bindCf() {
     setCfLoading(true);
@@ -175,14 +247,41 @@ function App() {
             </div>
             {current && <div className="quick-actions"><div><strong>准备开始？</strong><span>阅读题目、保存题面，或者前往原始题目页面。</span></div><div className="quick-buttons"><button className="secondary-button" onClick={() => selectProblem(current)}><FileText size={16} /> 查看题面</button>{current.url && <a className="secondary-button" href={current.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> 打开原题</a>}{current.url && <button className="subtle-icon" title="复制原题链接" onClick={() => notifyCopy(current.url)}><Link2 size={16} /></button>}</div></div>}
             <div className="tip-row"><CircleHelp size={17} /><span>同一轮抽题不会重复；筛选范围抽完后会自动开启新一轮。</span></div></div></div>
-          <div className="bottom-cards"><button className="feature-card" onClick={() => openView('library')}><span className="feature-icon peach"><Bookmark size={20} /></span><div><strong>把好题收进题单</strong><small>收藏、标记完成，保留自己的练习轨迹</small></div><ArrowRight size={18} /></button><button className="feature-card" onClick={() => openView('studio')}><span className="feature-icon lilac"><FileDown size={20} /></span><div><strong>一键导出题面</strong><small>Markdown、HTML 或打印为 PDF</small></div><ArrowRight size={18} /></button></div>
+          <div className="bottom-cards"><button className="feature-card" onClick={() => openView('library')}><span className="feature-icon peach"><Bookmark size={20} /></span><div><strong>把好题收进题单</strong><small>收藏、标记完成，保留自己的练习轨迹</small></div><ArrowRight size={18} /></button><button className="feature-card" onClick={() => openView('studio')}><span className="feature-icon lilac"><FileDown size={20} /></span><div><strong>获取并导出题面</strong><small>中文镜像、原文、PNG 与 PDF</small></div><ArrowRight size={18} /></button></div>
         </>}
 
         {view === 'library' && <><div className="page-eyebrow"><span className="eyebrow-line" /> YOUR COLLECTION</div><div className="page-title-row"><div><h1>我的<span>题单。</span></h1><p className="page-subtitle">把想做的题留在这里，随时接着练。</p></div></div><div className="library-toolbar"><div className="tabs"><button className={libraryTab === 'favorites' ? 'active' : ''} onClick={() => setLibraryTab('favorites')}><Bookmark size={16} /> 收藏题目 <span>{favorites.length}</span></button><button className={libraryTab === 'history' ? 'active' : ''} onClick={() => setLibraryTab('history')}><History size={16} /> 最近抽取 <span>{history.length}</span></button></div><div className="toolbar-right"><div className="library-search"><Search size={17} /><input placeholder="搜索题目或标签" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)} /></div><button className="outline-button" onClick={() => downloadLibrary('csv')}><Download size={16} /> 导出 CSV</button><button className="outline-button small-export" onClick={() => downloadLibrary('json')}>JSON</button></div></div><div className="library-list">{listed.length ? listed.map((problem, index) => <div className="library-item" key={problem.id}><span className="item-number">{String(index + 1).padStart(2, '0')}</span><div className="item-main"><div className="item-title"><strong>{problem.title}</strong><span>{problem.id}</span></div><div className="item-tags">{problem.tags.slice(0, 3).map(tag => <Pill key={tag}>{tag}</Pill>)}</div></div><Pill tone="rating">{problem.rating ?? '未评级'}</Pill>{solvedIds.has(problem.id) && <span className="done-label"><CheckCircle2 size={14} /> 已完成</span>}<button className="open-item" title="打开题面" onClick={() => selectProblem(problem)}><ArrowRight size={18} /></button></div>) : <div className="library-empty"><Bookmark size={30} /><strong>{libraryQuery ? '没有找到匹配题目' : libraryTab === 'favorites' ? '还没有收藏题目' : '还没有抽题记录'}</strong><p>去随机练题页抽一题，找到喜欢的就收藏起来。</p><button className="secondary-button" onClick={() => openView('random')}>去抽一道题 <ArrowRight size={15} /></button></div>}</div></>}
 
-        {view === 'studio' && <><div className="page-eyebrow"><span className="eyebrow-line" /> STATEMENT STUDIO</div><div className="page-title-row"><div><h1>题面<span>工作台。</span></h1><p className="page-subtitle">整理当前题目，并以适合阅读和分享的格式导出。</p></div></div>{current ? <div className="studio-layout"><div className="statement-card"><div className="statement-header"><div><span className="section-kicker"><FileText size={15} /> 题面预览</span><h2>{current.title}</h2><span className="statement-meta">{current.id} · {current.source === 'atcoder' ? 'AtCoder' : 'Codeforces'} · {current.rating ?? '未评级'}</span></div><Pill tone={currentStatement.trim() ? 'ready' : 'draft'}>{canExport ? '可导出' : '待补充'}</Pill></div><ProblemArticle problem={current} customText={currentStatement} /></div><aside className="studio-side"><div className="studio-tool-card"><div className="card-heading"><div><ArrowDownToLine size={17} /><strong>导出题面</strong></div></div><p>包含题目描述、输入输出、样例及来源信息。</p><button className="export-option" disabled={!canExport} onClick={() => exportStatement('md')}><span className="export-icon md"><FileCode2 size={18} /></span><span><strong>Markdown</strong><small>适合笔记与题解仓库</small></span><Download size={16} /></button><button className="export-option" disabled={!canExport} onClick={() => exportStatement('html')}><span className="export-icon html"><Code2 size={18} /></span><span><strong>HTML 网页</strong><small>可离线打开和分享</small></span><Download size={16} /></button><button className="export-option" disabled={!canExport} onClick={() => exportStatement('pdf')}><span className="export-icon pdf"><FileText size={18} /></span><span><strong>打印 / PDF</strong><small>在打印窗口选择另存为 PDF</small></span><ExternalLink size={16} /></button>{!canExport && <div className="mini-warning"><Info size={15} /> 先在下方保存题面正文即可导出。</div>}</div>{<div className="studio-tool-card editor-card"><div className="card-heading"><div><BookOpen size={17} /><strong>补充题面正文</strong></div></div><p>从原题复制文字，保存在本机。此内容只存在当前浏览器或客户端中。</p><textarea aria-label="题面正文" placeholder="在这里粘贴题目描述、输入输出、样例等内容…" value={currentStatement} onChange={e => setCustomStatements(previous => ({ ...previous, [current.id]: e.target.value }))} /><span className="save-indicator"><Check size={13} /> 自动保存到本机</span>{current.url && <a className="source-link" href={current.url} target="_blank" rel="noopener noreferrer">前往原题复制正文 <ExternalLink size={14} /></a>}</div>}<div className="studio-hint"><Sparkles size={17} /><span>题面保存在本机；两站的 API 均不提供正文。</span></div></aside></div> : <div className="library-empty studio-none"><FileText size={32} /><strong>先选一道题目</strong><p>从随机练题或我的题单中选择题目，即可在这里查看与导出。</p><button className="secondary-button" onClick={() => openView('random')}>去抽一道题 <ArrowRight size={15} /></button></div>}</>}
+        {view === 'studio' && <>
+          <div className="page-eyebrow"><span className="eyebrow-line" /> STATEMENT STUDIO</div>
+          <div className="page-title-row"><div><h1>题面<span>工作台。</span></h1><p className="page-subtitle">自动获取中文镜像与原文，并导出图片、Markdown、HTML 或 PDF。</p></div></div>
+          {current ? <div className="studio-layout">
+            <div className="statement-card" ref={statementRef}>
+              <div className="statement-header"><div><span className="section-kicker"><FileText size={15} /> 题面预览</span><h2>{currentStatement.trim() ? current.title : currentAuto?.[statementLocale]?.title || current.title}</h2><span className="statement-meta">{current.id} · {current.source === 'atcoder' ? 'AtCoder' : 'Codeforces'} · {current.rating ?? '未评级'}{currentAuto && !currentStatement.trim() ? ` · ${statementLocale === 'chinese' ? '中文译文' : '原文'}` : ''}</span></div><Pill tone={canExport ? 'ready' : 'draft'}>{canExport ? '可导出' : '待获取'}</Pill></div>
+              {currentAuto && !currentStatement.trim() && <div className="statement-language"><span>洛谷镜像题面</span><div>{currentAuto.chinese && <button className={statementLocale === 'chinese' ? 'active' : ''} onClick={() => setStatementLocale('chinese')}>中文</button>}{currentAuto.original && <button className={statementLocale === 'original' ? 'active' : ''} onClick={() => setStatementLocale('original')}>原文</button>}</div></div>}
+              <ProblemArticle problem={current} customText={currentStatement} autoStatement={currentAuto} locale={statementLocale} />
+            </div>
+            <aside className="studio-side">
+              <div className="studio-tool-card auto-card"><div className="card-heading"><div><Sparkles size={17} /><strong>自动获取题面</strong></div></div><p>优先读取洛谷收录的中文译文，也可切换到原文。原题链接始终保留。</p>
+                {currentAuto ? <div className="auto-status success"><CheckCircle2 size={16} /><span>已获取{currentAuto.chinese ? '中文译文' : '题面'}{currentAuto.original ? '和原文' : ''}</span></div>
+                  : statementStatus.id === current.id && statementStatus.state === 'loading' ? <div className="auto-status"><span className="cf-spinner" /> 正在读取题面…</div>
+                    : statementStatus.id === current.id && statementStatus.state === 'error' ? <div className="auto-status error"><Info size={16} /><span>{statementStatus.error}</span></div> : null}
+                <div className="auto-actions">{(window.contestNative?.fetchStatement || import.meta.env.VITE_STATEMENT_API) && <button className="outline-button" onClick={retryAutoStatement} disabled={statementStatus.id === current.id && statementStatus.state === 'loading'}><RotateCcw size={15} /> {currentAuto ? '重新获取' : '重试获取'}</button>}<a className="source-link" href={current.url} target="_blank" rel="noopener noreferrer">打开原题 <ExternalLink size={14} /></a>{currentAuto && <a className="source-link" href={currentAuto.mirrorUrl} target="_blank" rel="noopener noreferrer">查看中文镜像 <ExternalLink size={14} /></a>}</div>
+              </div>
+              <div className="studio-tool-card"><div className="card-heading"><div><ArrowDownToLine size={17} /><strong>导出题面</strong></div></div><p>按当前显示的语言导出，保留样例与来源。</p>
+                <button className="export-option" disabled={!canExport} onClick={() => exportStatement('png')}><span className="export-icon png"><FileDown size={18} /></span><span><strong>PNG 图片</strong><small>适合聊天分享与保存</small></span><Download size={16} /></button>
+                <button className="export-option" disabled={!canExport} onClick={() => exportStatement('md')}><span className="export-icon md"><FileCode2 size={18} /></span><span><strong>Markdown</strong><small>适合笔记与题解仓库</small></span><Download size={16} /></button>
+                <button className="export-option" disabled={!canExport} onClick={() => exportStatement('html')}><span className="export-icon html"><Code2 size={18} /></span><span><strong>HTML 网页</strong><small>可离线打开和分享</small></span><Download size={16} /></button>
+                <button className="export-option" disabled={!canExport} onClick={() => exportStatement('pdf')}><span className="export-icon pdf"><FileText size={18} /></span><span><strong>打印 / PDF</strong><small>在打印窗口选择另存为 PDF</small></span><ExternalLink size={16} /></button>
+                {!canExport && <div className="mini-warning"><Info size={15} /> 等待自动获取，或在下方粘贴题面正文。</div>}
+              </div>
+              <div className="studio-tool-card editor-card"><div className="card-heading"><div><BookOpen size={17} /><strong>我的题面</strong></div></div><p>可自行粘贴或修改。填写后优先显示此版本；清空后显示镜像题面。</p><textarea aria-label="题面正文" placeholder="在这里粘贴题目描述、输入输出、样例等内容…" value={currentStatement} onChange={e => setCustomStatements(previous => ({ ...previous, [current.id]: e.target.value }))} /><span className="save-indicator"><Check size={13} /> 自动保存到本机</span></div>
+              <div className="studio-hint"><Info size={17} /><span>译文来自洛谷镜像；请以原题页面为准。</span></div>
+            </aside>
+          </div> : <div className="library-empty studio-none"><FileText size={32} /><strong>先选一道题目</strong><p>从随机练题或我的题单中选择题目，即可在这里查看与导出。</p><button className="secondary-button" onClick={() => openView('random')}>去抽一道题 <ArrowRight size={15} /></button></div>}
+        </>}
 
-        {view === 'settings' && <><div className="page-eyebrow"><span className="eyebrow-line" /> MAKE IT YOURS</div><div className="page-title-row"><div><h1>随时随地，<span>继续练习。</span></h1><p className="page-subtitle">安装客户端，或绑定 Codeforces 账号自动排除已 AC 的题。</p></div></div><div className="settings-grid"><section className="settings-card"><div className="settings-icon orange"><Laptop size={24} /></div><h2>下载客户端</h2><p>网页版支持安装为独立应用；Windows、macOS 和 Linux 桌面包由 GitHub Releases 提供。备用题库离线可用。</p><div className="setting-actions"><button className="primary-button" disabled={!installEvent} onClick={() => { installEvent?.prompt(); installEvent?.userChoice.finally(() => setInstallEvent(null)); }}><Download size={17} /> 安装网页客户端</button>{releasesUrl ? <div className="platform-links">{['Windows', 'macOS', 'Linux'].map(platform => <a key={platform} className="outline-button" href={releasesUrl} target="_blank" rel="noopener noreferrer"><Download size={15} /> {platform} 包</a>)}</div> : <span className="setting-muted">仓库发布 Release 后可下载 Windows、macOS 和 Linux 桌面包</span>}</div><div className="setting-foot"><Info size={15} /> {installEvent ? '浏览器已准备好安装。' : '若安装按钮不可用，可使用浏览器菜单中的“安装应用”。'}</div></section><section className="settings-card"><div className="settings-icon purple"><Code2 size={24} /></div><h2>Codeforces 账号</h2><p>读取你的公开提交记录，自动从 Codeforces 随机题库里排除已 AC 的题。用户名和结果仅保存在本机。</p><div className="cf-form"><input aria-label="Codeforces 用户名" placeholder="输入 Codeforces 用户名" value={cfInput} onChange={e => setCfInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && bindCf()} /><button className="secondary-button" disabled={cfLoading} onClick={bindCf}>{cfLoading ? '同步中…' : cfBinding.handle ? '更新 AC' : '绑定账号'}</button></div>{cfBinding.handle && <div className="binding-status"><CheckCircle2 size={17} /><span><strong>{cfBinding.handle}</strong> · 已收录 {nf.format(cfBinding.ids.length)} 道 AC{cfBinding.truncated ? '（提交过多，已读取前 3 万条）' : ''}</span><button onClick={() => { setCfBinding({ handle: '', ids: [], updatedAt: 0 }); setCfInput(''); }}>解绑</button></div>}</section><section className="settings-card info-card"><div className="settings-icon green"><BookOpen size={23} /></div><h2>关于题库与导出</h2><p>Codeforces 与 AtCoder 的题库 API 都不提供题面正文。从原题复制正文保存后，可下载 Markdown、HTML 或打印为 PDF。</p><div className="stat-line"><span>AtCoder 题目</span><strong>{nf.format(atProblems.length)} 题</strong></div><div className="stat-line"><span>Codeforces 题目</span><strong>{nf.format(cfProblems.length)} 题</strong></div><div className="stat-line"><span>本机已保存题面</span><strong>{Object.values(customStatements).filter(Boolean).length} 份</strong></div></section><section className="settings-card info-card"><div className="settings-icon blue"><CircleHelp size={23} /></div><h2>数据留在本机</h2><p>题单、抽题历史、手动完成记录和补充的题面保存在当前浏览器或桌面客户端。不同设备之间不会自动同步。</p><div className="setting-foot"><Info size={15} /> 在“我的题单”中可下载 CSV 和 JSON 备份。</div></section></div></>}
+        {view === 'settings' && <><div className="page-eyebrow"><span className="eyebrow-line" /> MAKE IT YOURS</div><div className="page-title-row"><div><h1>随时随地，<span>继续练习。</span></h1><p className="page-subtitle">安装客户端，或绑定 Codeforces 账号自动排除已 AC 的题。</p></div></div><div className="settings-grid"><section className="settings-card"><div className="settings-icon orange"><Laptop size={24} /></div><h2>下载客户端</h2><p>网页版支持安装为独立应用；Windows、macOS 和 Linux 桌面包由 GitHub Releases 提供。备用题库离线可用。</p><div className="setting-actions"><button className="primary-button" disabled={!installEvent} onClick={() => { installEvent?.prompt(); installEvent?.userChoice.finally(() => setInstallEvent(null)); }}><Download size={17} /> 安装网页客户端</button>{releasesUrl ? <div className="platform-links">{['Windows', 'macOS', 'Linux'].map(platform => <a key={platform} className="outline-button" href={releasesUrl} target="_blank" rel="noopener noreferrer"><Download size={15} /> {platform} 包</a>)}</div> : <span className="setting-muted">仓库发布 Release 后可下载 Windows、macOS 和 Linux 桌面包</span>}</div><div className="setting-foot"><Info size={15} /> {installEvent ? '浏览器已准备好安装。' : '若安装按钮不可用，可使用浏览器菜单中的“安装应用”。'}</div></section><section className="settings-card"><div className="settings-icon purple"><Code2 size={24} /></div><h2>Codeforces 账号</h2><p>读取你的公开提交记录，自动从 Codeforces 随机题库里排除已 AC 的题。用户名和结果仅保存在本机。</p><div className="cf-form"><input aria-label="Codeforces 用户名" placeholder="输入 Codeforces 用户名" value={cfInput} onChange={e => setCfInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && bindCf()} /><button className="secondary-button" disabled={cfLoading} onClick={bindCf}>{cfLoading ? '同步中…' : cfBinding.handle ? '更新 AC' : '绑定账号'}</button></div>{cfBinding.handle && <div className="binding-status"><CheckCircle2 size={17} /><span><strong>{cfBinding.handle}</strong> · 已收录 {nf.format(cfBinding.ids.length)} 道 AC{cfBinding.truncated ? '（提交过多，已读取前 3 万条）' : ''}</span><button onClick={() => { setCfBinding({ handle: '', ids: [], updatedAt: 0 }); setCfInput(''); }}>解绑</button></div>}</section><section className="settings-card info-card"><div className="settings-icon green"><BookOpen size={23} /></div><h2>关于题库与导出</h2><p>题库 API 只提供元数据。桌面版可读取洛谷中文镜像与原文；网页版配置题面服务后也可自动获取，并导出图片、Markdown、HTML 或 PDF。</p><div className="stat-line"><span>AtCoder 题目</span><strong>{nf.format(atProblems.length)} 题</strong></div><div className="stat-line"><span>Codeforces 题目</span><strong>{nf.format(cfProblems.length)} 题</strong></div><div className="stat-line"><span>本机已保存题面</span><strong>{Object.values(customStatements).filter(Boolean).length} 份</strong></div></section><section className="settings-card info-card"><div className="settings-icon blue"><CircleHelp size={23} /></div><h2>数据留在本机</h2><p>题单、抽题历史、已完成记录和题面保存在当前浏览器或桌面客户端。不同设备之间不会自动同步。</p><div className="setting-foot"><Info size={15} /> 在“我的题单”中可下载 CSV 和 JSON 备份。</div></section></div></>}
       </div><footer className="site-footer"><span>© {new Date().getFullYear()} Contest Compass</span><span>Made for the next problem <span className="footer-heart">♥</span></span></footer>
     </main>{toast && <div className="toast" role="status"><CheckCircle2 size={17} /> {toast}</div>}
   </div>;

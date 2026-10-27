@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { adjustedDifficulty, normalizeAtcoderProblem } from '../src/lib/atcoder.js';
 import { filteredProblems, randomUnseen } from '../src/lib/problems.js';
 import { exportCsv, statementHtml, statementMarkdown } from '../src/lib/export.js';
+import { luoguIdFor, parseLuoguHtml } from '../src/lib/statement.js';
+import statementWorker from '../server/statement-worker/worker.mjs';
 
 const problems = [
   { id: '1A', source: 'codeforces', title: 'A', rating: 900, tags: ['math', 'implementation'], url: 'https://codeforces.com/problemset/problem/1/A' },
@@ -50,6 +52,30 @@ test('statement exports preserve user text and escape HTML', () => {
   assert.ok(!html.includes('<script>'));
   assert.ok(!html.includes('<img'));
   assert.match(html, /&lt;img/);
+});
+
+test('Luogu response keeps Chinese translation, original text, and samples', () => {
+  const payload = { status: 200, data: { problem: {
+    pid: 'CF1A', name: 'Sample',
+    contenu: { name: '中文标题', locale: 'zh-CN', description: '中文题面 $n$', formatI: '输入 n', formatO: '输出 n' },
+    content: { name: 'English title', locale: 'en', description: 'Original statement', formatI: 'Input n', formatO: 'Output n' },
+    samples: ['2\n', '4\n']
+  } } };
+  const html = `<script id="lentille-context" type="application/json">${JSON.stringify(payload)}</script>`;
+  const statement = parseLuoguHtml(html, 'CF1A');
+  assert.equal(statement.chinese.sections[0].markdown, '中文题面 $n$');
+  assert.equal(statement.original.locale, 'en');
+  assert.deepEqual(statement.samples, [{ input: '2', output: '4' }]);
+  assert.match(statementMarkdown(problems[0], statement, 'chinese'), /## 样例 1/);
+  assert.equal(luoguIdFor(problems[2]), 'AT_abc001_a');
+  assert.throws(() => parseLuoguHtml(html, 'CF2A'), /尚未收录/);
+});
+
+test('statement worker rejects invalid IDs and unauthorized origins', async () => {
+  const invalid = await statementWorker.fetch(new Request('https://worker.example/statement?id=../../etc/passwd', { headers: { Origin: 'https://usedchang.github.io' } }));
+  assert.equal(invalid.status, 400);
+  const denied = await statementWorker.fetch(new Request('https://worker.example/statement?id=CF1A', { headers: { Origin: 'https://other.example' } }));
+  assert.equal(denied.status, 403);
 });
 
 test('offline metadata pools are populated', () => {
